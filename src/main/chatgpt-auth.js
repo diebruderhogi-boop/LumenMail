@@ -16,7 +16,11 @@ async function tokenRequest(parameters) {
     signal: AbortSignal.timeout(30000)
   });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error_description || result.error || `Anmeldung bei ChatGPT fehlgeschlagen (HTTP ${response.status}).`);
+  if (!response.ok) {
+    const error = new Error(result.error_description || result.error || `Anmeldung bei ChatGPT fehlgeschlagen (HTTP ${response.status}).`);
+    error.code = result.error || '';
+    throw error;
+  }
   return result;
 }
 
@@ -44,12 +48,13 @@ async function verifyIdToken(idToken, clientId, expectedNonce) {
   return claims;
 }
 
-async function signIn({ hostId, existingProfile = null }) {
+async function signIn({ hostId, existingProfile = null, pendingProfile = null, onRegistration = async () => {} }) {
   const state = randomBase64Url();
   const nonce = randomBase64Url();
   const verifier = randomBase64Url(48);
   const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
-  const clientId = existingProfile?.clientId || 'dynamic_agent_client';
+  const savedRegistration = existingProfile || (pendingProfile?.hostId === hostId ? pendingProfile : null);
+  const clientId = savedRegistration?.clientId || 'dynamic_agent_client';
   const server = http.createServer();
   await new Promise((resolve, reject) => {
     server.once('error', reject);
@@ -87,7 +92,7 @@ async function signIn({ hostId, existingProfile = null }) {
   const authorize = new URL(`${AUTH_ROOT}/api/accounts/authorize`);
   authorize.search = new URLSearchParams({
     client_id: clientId,
-    ...(existingProfile ? {} : { agent_name_hint: 'LumenMail' }),
+    ...(savedRegistration ? {} : { agent_name_hint: 'LumenMail' }),
     ext_agent_host_id: hostId,
     ...(existingProfile?.idToken ? { id_token_hint: existingProfile.idToken } : {}),
     ...(existingProfile?.email ? { login_hint: existingProfile.email } : {}),
@@ -104,16 +109,29 @@ async function signIn({ hostId, existingProfile = null }) {
     await shell.openExternal(authorize.toString());
     const callback = await callbackResult;
     if (!callback.code) throw new Error('Die ChatGPT-Anmeldung hat keinen Autorisierungscode zurückgegeben.');
-    const issuedClientId = callback.callbackClientId || (existingProfile ? existingProfile.clientId : '');
-    if (!issuedClientId || (existingProfile && issuedClientId !== existingProfile.clientId)) throw new Error('Die ChatGPT-Registrierung konnte nicht sicher zugeordnet werden. Bitte erneut anmelden.');
-    const tokens = await tokenRequest({
-      grant_type: 'authorization_code',
-      client_id: issuedClientId,
-      code: callback.code,
-      code_verifier: verifier,
-      redirect_uri: redirectUri,
-      resource: RESOURCE
-    });
+    const issuedClientId = callback.callbackClientId || savedRegistration?.clientId || '';
+    if (!issuedClientId || (savedRegistration && issuedClientId !== savedRegistration.clientId) || (!savedRegistration && issuedClientId === 'dynamic_agent_client')) {
+      throw new Error('Die ChatGPT-Registrierung konnte nicht sicher zugeordnet werden. Bitte erneut anmelden.');
+    }
+    // A dynamic client ID must survive even if the one-time code expires or is rejected.
+    // OpenAI requires a fresh authorization attempt to reuse this issued ID.
+    if (!savedRegistration) await onRegistration({ clientId: issuedClientId, hostId, savedAt: Date.now() });
+    let tokens;
+    try {
+      tokens = await tokenRequest({
+        grant_type: 'authorization_code',
+        client_id: issuedClientId,
+        code: callback.code,
+        code_verifier: verifier,
+        redirect_uri: redirectUri,
+        resource: RESOURCE
+      });
+    } catch (error) {
+      if (error.code === 'invalid_grant') {
+        throw new Error('ChatGPT hat den einmaligen Anmeldecode abgelehnt oder er ist abgelaufen. Die Kontoregistrierung wurde gesichert. Klicke erneut auf „ChatGPT verbinden“, damit LumenMail eine frische Anmeldung startet.');
+      }
+      throw error;
+    }
     const claims = await verifyIdToken(tokens.id_token, issuedClientId, nonce);
     if (existingProfile?.subject && claims.sub !== existingProfile.subject) {
       throw new Error('Das angemeldete ChatGPT-Konto stimmt nicht mit dem gespeicherten Konto überein. Bitte verbinde es als neues Konto.');
@@ -186,4 +204,3 @@ async function revokeProfile(profile) {
 }
 
 module.exports = { signIn, refreshProfile, getModels, revokeProfile };
-

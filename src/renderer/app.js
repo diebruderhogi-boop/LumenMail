@@ -34,7 +34,15 @@
     setTimeout(() => item.remove(), 5200);
   }
 
-  function errorMessage(error) { return String(error?.message || error || 'Etwas ist schiefgelaufen.'); }
+  function errorMessage(error) {
+    let message = String(error?.message || error || 'Etwas ist schiefgelaufen.');
+    const ipcError = message.match(/^Error invoking remote method '[^']+': Error: ([\s\S]*)$/);
+    if (ipcError) message = ipcError[1];
+    if (message === 'invalid_grant') {
+      return 'ChatGPT hat den einmaligen Anmeldecode abgelehnt oder er ist abgelaufen. Bitte verbinde ChatGPT erneut.';
+    }
+    return message;
+  }
 
   function applyAppearance() {
     document.body.classList.toggle('dark', state.settings.theme === 'dark');
@@ -784,4 +792,3 @@
 
   init();
 })();
-

@@ -6,7 +6,7 @@ LumenMail ist ein Windows-E-Mail-Client mit IMAP/SMTP, lokalem Postfach, Entwür
 
 Für die normale Nutzung brauchst du nur die Windows-Setup-Datei aus dem GitHub-Release:
 
-1. Doppelklicke auf `LumenMail-Setup-1.0.2.exe`.
+1. Doppelklicke auf `LumenMail-Setup-1.0.4.exe`.
 2. Wähle bei Bedarf den Installationsordner.
 3. Lass die Verknüpfung im Startmenü oder auf dem Desktop erstellen.
 4. Starte LumenMail und füge dein E-Mail-Konto hinzu.
@@ -66,4 +66,3 @@ Der Installer erscheint anschließend in `release`. Das Programm nutzt Electron,
 ## Hinweis
 
 LumenMail ist ein eigenständiges, lokal installiertes Programm. Es ist kein Outlook-Produkt und nicht mit dem Microsoft-Dienst verbunden. Server- und Anmeldeanforderungen können je nach Anbieter und Kontotyp abweichen.
-

@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.0.4
+
+- Sichert die dynamische ChatGPT-Client-ID vor dem Tokenaustausch und verwendet sie nach `invalid_grant` bei einer neuen Anmeldung erneut.
+- Zeigt verständliche deutsche Hinweise bei Fehlern der ChatGPT-Verbindung.
+
 ## 1.0.3
 
 - Startet auch dann, wenn der verschlüsselte Zugangsdaten-Speicher beschädigt ist.
@@ -14,4 +19,3 @@
 - Prüft bei der ChatGPT-Anmeldung die vom Token-Dienst bestätigten Berechtigungen.
 - Entfernt versehentliche Leerzeichen aus Gmail-App-Passwörtern.
 - Dokumentiert ausdrücklich, dass die Desktop-Version keine QR-Kopplung für E-Mail-Konten enthält.
-

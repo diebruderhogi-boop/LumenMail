@@ -244,9 +244,20 @@ function registerIpc() {
       settings.chatgptHostId = `urn:uuid:${randomUUID()}`;
       writeJsonAtomic(userFiles().settings, settings);
     }
-    const profile = await chatgptAuth.signIn({ hostId: settings.chatgptHostId, existingProfile: secrets.chatgpt || null });
-    secrets.chatgpt = profile;
-    await writeSecrets(secrets);
+    const profile = await chatgptAuth.signIn({
+      hostId: settings.chatgptHostId,
+      existingProfile: secrets.chatgpt || null,
+      pendingProfile: secrets.chatgptPending || null,
+      onRegistration: async (registration) => {
+        const latest = await readSecrets();
+        latest.chatgptPending = registration;
+        await writeSecrets(latest);
+      }
+    });
+    const latest = await readSecrets();
+    latest.chatgpt = profile;
+    delete latest.chatgptPending;
+    await writeSecrets(latest);
     try {
       const { models } = await chatgptProfile();
       return publicChatGPT(profile, models);
@@ -456,4 +467,3 @@ app.on('web-contents-created', (_event, contents) => {
   contents.on('will-attach-webview', (event) => event.preventDefault());
   contents.on('will-navigate', (event, url) => { if (!url.startsWith('file://')) event.preventDefault(); });
 });
-

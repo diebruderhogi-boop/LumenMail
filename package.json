@@ -1,6 +1,6 @@
 {
   "name": "lumenmail",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Ein moderner, lokaler E-Mail-Client für Windows",
   "main": "src/main/main.js",
   "author": "LumenMail",
@@ -50,4 +50,3 @@
     }
   }
 }
-
