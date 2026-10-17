@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.0.5
+
+- Zeigt beim Prüfen neuer Mailkonten verständliche IMAP- und SMTP-Fehler samt Serverhinweis statt nur „Command failed“.
+- Erkennt typische Ablehnungen von Anmeldedaten und Verbindungen über IMAP- und SMTP-Serverantworten.
+
 ## 1.0.4
 
 - Sichert die dynamische ChatGPT-Client-ID vor dem Tokenaustausch und verwendet sie nach `invalid_grant` bei einer neuen Anmeldung erneut.
@@ -19,3 +24,4 @@
 - Prüft bei der ChatGPT-Anmeldung die vom Token-Dienst bestätigten Berechtigungen.
 - Entfernt versehentliche Leerzeichen aus Gmail-App-Passwörtern.
 - Dokumentiert ausdrücklich, dass die Desktop-Version keine QR-Kopplung für E-Mail-Konten enthält.
+

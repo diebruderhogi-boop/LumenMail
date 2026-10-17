@@ -120,12 +120,18 @@ async function testConnection(account, secret) {
   const client = imapClient(account, secret, true);
   try {
     await client.connect();
+  } catch (error) {
+    error.lumenMailStage = 'IMAP';
+    throw error;
   } finally {
     try { await client.logout(); } catch { client.close(); }
   }
   const transport = smtpTransportFor(account, secret);
   try {
     await transport.verify();
+  } catch (error) {
+    error.lumenMailStage = 'SMTP';
+    throw error;
   } finally {
     transport.close();
   }
@@ -237,4 +243,5 @@ function saveAttachment(attachment, targetPath) {
 }
 
 module.exports = { testConnection, syncAccount, updateRemoteMessage, sendMessage, saveAttachment, chooseFolder };
+
 

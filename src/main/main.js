@@ -105,11 +105,24 @@ function publicAccounts(settings) {
 
 function safeError(error) {
   const message = String(error?.message || 'Unbekannter Fehler').replace(/\s+/g, ' ').slice(0, 400);
-  if (/authentication|auth failed|invalid credentials|login failed|535|invalid login/i.test(message)) {
+  const rawServerText = error?.responseText || error?.response?.responseText || (typeof error?.response === 'string' ? error.response : '');
+  const serverText = String(rawServerText).replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240);
+  const diagnostic = `${message} ${serverText} ${error?.code || ''} ${error?.responseStatus || ''}`;
+  if (/authentication|auth failed|invalid credentials|login failed|535|534|invalid login|authenticationfailed|5\.7\.8/i.test(diagnostic)) {
     return 'Anmeldung fehlgeschlagen. Prüfe Benutzername, Passwort oder App-Passwort und die IMAP/SMTP-Freigabe beim Anbieter.';
   }
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|timeout|connect/i.test(message)) {
+  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|timeout|connect/i.test(diagnostic)) {
     return 'Verbindung fehlgeschlagen. Prüfe Serveradresse, Port, Internetverbindung und TLS-Einstellung.';
+  }
+  if (error?.lumenMailStage === 'IMAP' && message === 'Command failed') {
+    return serverText
+      ? `IMAP-Server hat die Verbindung abgelehnt: ${serverText}`
+      : 'IMAP-Server hat einen Befehl abgelehnt. Prüfe IMAP-Serveradresse, Port, TLS und die Kontofreigabe beim Anbieter.';
+  }
+  if (error?.lumenMailStage === 'SMTP' && (error?.response || error?.responseCode)) {
+    return serverText
+      ? `SMTP-Server hat die Verbindung abgelehnt: ${serverText}`
+      : 'SMTP-Server hat die Verbindung abgelehnt. Prüfe SMTP-Serveradresse, Port, TLS und die Kontofreigabe beim Anbieter.';
   }
   return message;
 }
@@ -349,7 +362,11 @@ function registerIpc() {
       username: account.username,
       authMode: account.authMode
     };
-    return mail.testConnection(account, secret);
+    try {
+      return await mail.testConnection(account, secret);
+    } catch (error) {
+      throw new Error(safeError(error));
+    }
   });
   ipcMain.handle('account:save', async (_event, input) => {
     const settings = readSettings();
@@ -467,3 +484,4 @@ app.on('web-contents-created', (_event, contents) => {
   contents.on('will-attach-webview', (event) => event.preventDefault());
   contents.on('will-navigate', (event, url) => { if (!url.startsWith('file://')) event.preventDefault(); });
 });
+
