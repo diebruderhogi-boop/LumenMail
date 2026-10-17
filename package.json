@@ -1,0 +1,53 @@
+{
+  "name": "lumenmail",
+  "version": "1.0.2",
+  "description": "Ein moderner, lokaler E-Mail-Client für Windows",
+  "main": "src/main/main.js",
+  "author": "LumenMail",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "dependencies": {
+    "html-to-text": "^10.0.1",
+    "imapflow": "^2.5.2",
+    "mailparser": "^3.9.40",
+    "nodemailer": "^10.1.2",
+    "sql.js": "^1.15.0"
+  },
+  "devDependencies": {
+    "electron": "^44.9.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "de.lumenmail.desktop",
+    "productName": "LumenMail",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "asar": true,
+    "win": {
+      "icon": "assets/lumenmail.ico",
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "LumenMail-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "installerIcon": "assets/lumenmail.ico",
+      "uninstallerIcon": "assets/lumenmail.ico",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "LumenMail"
+    }
+  }
+}
+

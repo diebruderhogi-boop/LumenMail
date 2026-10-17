@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LumenMail</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="extras.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">✦</span><span>Lumen<span class="brand-light">Mail</span></span></div>
+      <button class="compose-primary" id="composeBtn"><span>＋</span> Neue E-Mail</button>
+      <div class="side-label">POSTFACH</div>
+      <nav class="folder-nav" aria-label="E-Mail-Ordner">
+        <button class="nav-item active" data-folder="inbox"><span class="nav-icon">▣</span><span data-i18n="inbox">Posteingang</span><span class="nav-count" id="unreadCount">0</span></button>
+        <button class="nav-item" data-folder="all"><span class="nav-icon">▤</span><span data-i18n="all">Alle E-Mails</span></button>
+        <button class="nav-item" data-folder="sent"><span class="nav-icon">↗</span><span data-i18n="sent">Gesendet</span></button>
+        <button class="nav-item" data-folder="drafts"><span class="nav-icon">◩</span><span data-i18n="drafts">Entwürfe</span><span class="sub-count" id="draftCount"></span></button>
+        <button class="nav-item" data-folder="archive"><span class="nav-icon">▱</span><span data-i18n="archive">Archiv</span></button>
+        <button class="nav-item" data-folder="trash"><span class="nav-icon">⌫</span><span data-i18n="trash">Papierkorb</span></button>
+      </nav>
+      <div class="side-label category-heading">KATEGORIEN</div>
+      <nav class="folder-nav category-nav">
+        <button class="nav-item category-item" data-category="Wichtig"><span class="category-dot dot-important">●</span><span>Wichtig</span></button>
+        <button class="nav-item category-item" data-category="Arbeit"><span class="category-dot dot-work">●</span><span>Arbeit</span></button>
+        <button class="nav-item category-item" data-category="Schule"><span class="category-dot dot-school">●</span><span>Schule</span></button>
+        <button class="nav-item category-item" data-category="Privat"><span class="category-dot dot-private">●</span><span>Privat</span></button>
+        <button class="nav-item category-item" data-category="Werbung"><span class="category-dot dot-promo">●</span><span>Werbung</span></button>
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <div class="connection-card" id="connectionCard">
+        <span class="connection-dot"></span><div><b id="connectionTitle">Noch kein Konto</b><small id="connectionSubtitle">Füge ein Postfach hinzu</small></div>
+      </div>
+      <button class="nav-item bottom-nav" id="chatOpenBtn"><span class="nav-icon chat-icon">✧</span><span>ChatGPT-Assistent</span><span class="ai-pill">KI</span></button>
+      <button class="nav-item bottom-nav" id="settingsBtn"><span class="nav-icon">⚙</span><span data-i18n="settings">Einstellungen</span></button>
+      <div class="sidebar-footer">LumenMail <span id="versionLabel">1.0.2</span></div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div class="topbar-title"><span class="mobile-brand">✦</span><span id="currentFolderTitle">Posteingang</span><span class="topbar-total" id="folderTotal">0</span></div>
+        <div class="search-wrap"><span class="search-icon">⌕</span><input id="searchInput" type="search" placeholder="E-Mails durchsuchen …" data-i18n-placeholder="search"><kbd>⌘ K</kbd></div>
+        <div class="topbar-actions">
+          <select id="accountFilter" class="account-filter" aria-label="Konto auswählen"><option value="">Alle Konten</option></select>
+          <button class="icon-button sync-button" id="syncBtn" title="Jetzt synchronisieren" aria-label="Jetzt synchronisieren">⟳</button>
+          <button class="avatar-button" id="profileBtn" title="Konto hinzufügen">＋</button>
+        </div>
+      </header>
+
+      <section class="welcome-strip" id="welcomeStrip">
+        <div class="welcome-copy"><div class="eyebrow">DEIN POSTFACH AUF EINEN BLICK</div><h1>Guten Tag<span id="welcomeName"></span> <span class="wave">✦</span></h1><p id="welcomeSubtitle">Alles Wichtige an einem Ort. Synchronisiere dein E-Mail-Konto, um loszulegen.</p></div>
+        <button class="digest-button" id="digestBtn"><span class="digest-sparkle">✧</span><span><b>Postfach-Überblick</b><small>Mit ChatGPT zusammenfassen</small></span><span class="arrow">→</span></button>
+        <div class="stats-row">
+          <div class="stat-card"><span class="stat-icon stat-blue">▣</span><div><b id="statUnread">0</b><small>Ungelesen</small></div></div>
+          <div class="stat-card"><span class="stat-icon stat-amber">⚑</span><div><b id="statImportant">0</b><small>Wichtig</small></div></div>
+          <div class="stat-card"><span class="stat-icon stat-violet">✧</span><div><b id="statAccounts">0</b><small>Konten</small></div></div>
+        </div>
+      </section>
+
+      <section class="mail-workspace">
+        <div class="list-pane">
+          <div class="list-toolbar">
+            <div class="toolbar-left"><button class="select-all" id="selectAllBtn" title="Alle auswählen">□</button><button class="toolbar-button" id="markReadBtn" title="Als gelesen markieren">✓</button><button class="toolbar-button" id="archiveSelectedBtn" title="Archivieren">▱</button><button class="toolbar-button danger-hover" id="deleteSelectedBtn" title="Löschen">⌫</button><span class="selection-label" id="selectionLabel"></span></div>
+            <div class="toolbar-right"><select id="sortSelect" class="sort-select" aria-label="Sortierung"><option value="date">Neueste zuerst</option><option value="sender">Absender A–Z</option><option value="subject">Betreff A–Z</option><option value="category">Kategorie</option></select><button class="toolbar-button" id="refreshListBtn" title="Ansicht aktualisieren">⟳</button></div>
+          </div>
+          <div class="sync-banner hidden" id="syncBanner"><span class="spinner"></span><span id="syncText">Postfach wird synchronisiert …</span></div>
+          <div class="mail-list" id="mailList" role="list"></div>
+          <div class="empty-state hidden" id="emptyState"><div class="empty-art">✉</div><h2 id="emptyTitle">Dein Posteingang ist bereit</h2><p id="emptyText">Füge ein Konto hinzu und synchronisiere deine E-Mails.</p><button class="button-primary" id="emptyAction">E-Mail-Konto hinzufügen</button></div>
+          <div class="list-footer" id="listFooter"></div>
+        </div>
+        <aside class="preview-pane" id="previewPane">
+          <div class="preview-placeholder"><div class="preview-art">✦</div><h2>Dein Postfach, ganz entspannt.</h2><p>Wähle eine E-Mail aus, um sie hier zu lesen. Deine Nachrichten bleiben lokal gespeichert.</p><button class="text-button" id="previewChatBtn">✧ Frag den ChatGPT-Assistenten</button></div>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+
+  <dialog class="modal compose-modal" id="composeDialog">
+    <form method="dialog" class="modal-window compose-window" id="composeForm">
+      <div class="modal-header"><div><span class="eyebrow">NACHRICHT</span><h2 id="composeTitle">Neue E-Mail</h2></div><button class="close-button" value="cancel" aria-label="Schließen">×</button></div>
+      <label class="field-row"><span>Von</span><select id="composeAccount" required></select></label>
+      <label class="field-row"><span>An</span><input id="composeTo" placeholder="name@beispiel.de" required></label>
+      <label class="field-row"><span>Cc</span><input id="composeCc" placeholder="Optional"></label>
+      <label class="field-row"><span>Betreff</span><input id="composeSubject" placeholder="Betreff der E-Mail"></label>
+      <textarea id="composeBody" class="compose-body" placeholder="Schreibe deine Nachricht …"></textarea>
+      <div class="attachment-list" id="composeAttachments"></div>
+      <div class="compose-toolbar"><button class="toolbar-button" type="button" id="attachBtn">＋ Anhang</button><div class="ai-compose-tools"><span class="ai-mini-label">✧ ChatGPT</span><button type="button" class="small-ai" data-compose-ai="professional">Professionell</button><button type="button" class="small-ai" data-compose-ai="friendly">Freundlicher</button><button type="button" class="small-ai" data-compose-ai="proofread">Korrigieren</button></div></div>
+      <div class="compose-status" id="composeStatus"></div>
+      <div class="modal-footer"><button class="button-quiet" type="button" id="saveDraftBtn">Entwurf speichern</button><span class="footer-spacer"></span><button class="button-quiet" value="cancel">Abbrechen</button><button class="button-primary" type="button" id="sendBtn">Senden <span>↗</span></button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal settings-modal" id="settingsDialog">
+    <form method="dialog" class="modal-window settings-window">
+      <div class="modal-header"><div><span class="eyebrow">LUMENMAIL ANPASSEN</span><h2>Einstellungen</h2></div><button class="close-button" value="cancel" aria-label="Schließen">×</button></div>
+      <div class="settings-layout">
+        <nav class="settings-tabs"><button class="settings-tab active" data-settings-tab="general">Allgemein</button><button class="settings-tab" data-settings-tab="accounts">E-Mail-Konten</button><button class="settings-tab" data-settings-tab="chatgpt">ChatGPT</button><button class="settings-tab" data-settings-tab="privacy">Datenschutz</button></nav>
+        <div class="settings-content">
+          <section class="settings-section active" data-settings-section="general"><h3>Darstellung</h3><div class="setting-line"><div><b>Farbschema</b><small>Wähle dein bevorzugtes Erscheinungsbild.</small></div><select id="settingTheme"><option value="light">Hell</option><option value="dark">Dunkel</option></select></div><div class="setting-line"><div><b>Sprache</b><small>Sprache der Benutzeroberfläche.</small></div><select id="settingLanguage"><option value="de">Deutsch</option><option value="en">English</option></select></div><div class="setting-line"><div><b>Schriftgröße</b><small>Passt Texte in der App an.</small></div><select id="settingFont"><option value="0.9">Klein</option><option value="1">Normal</option><option value="1.1">Groß</option><option value="1.2">Sehr groß</option></select></div><h3 class="settings-subhead">Synchronisierung & Hinweise</h3><div class="setting-line"><div><b>Automatische Synchronisierung</b><small>Wie oft nach neuen E-Mails gesucht wird.</small></div><select id="settingSync"><option value="1">Jede Minute</option><option value="5">Alle 5 Minuten</option><option value="10">Alle 10 Minuten</option><option value="15">Alle 15 Minuten</option><option value="30">Alle 30 Minuten</option><option value="60">Stündlich</option></select></div><label class="setting-line toggle-line"><span><b>Desktop-Benachrichtigungen</b><small>Hinweis bei neuen E-Mails anzeigen.</small></span><input type="checkbox" id="settingNotifications"><span class="toggle"></span></label><div class="setting-line"><div><b>Benachrichtigungen pausieren</b><small>Vorübergehend keine Desktop-Hinweise anzeigen.</small></div><select id="settingMute"><option value="0">Nicht pausiert</option><option value="60">1 Stunde</option><option value="480">8 Stunden</option><option value="1440">24 Stunden</option></select></div><div class="setting-line filter-setting"><div><b>Konten für Hinweise</b><small>Leer bedeutet: alle Konten.</small></div><div class="check-group" id="settingNotifyAccounts"></div></div><div class="setting-line filter-setting"><div><b>Kategorien für Hinweise</b><small>Leer bedeutet: alle Kategorien.</small></div><div class="check-group" id="settingNotifyCategories"></div></div></section>
+          <section class="settings-section" data-settings-section="accounts"><div class="section-head"><div><h3>Deine Postfächer</h3><p>Konten werden sicher auf diesem Gerät gespeichert.</p></div><button class="button-primary compact" type="button" id="addAccountBtn">＋ Konto hinzufügen</button></div><div class="account-list" id="settingsAccounts"></div></section>
+          <section class="settings-section" data-settings-section="chatgpt"><div class="chatgpt-brand"><div class="chatgpt-symbol">✧</div><div><h3>ChatGPT mit LumenMail</h3><p>Verbinde dein ChatGPT-Konto für Chat, Zusammenfassungen und intelligente Sortierung.</p></div></div><div class="chatgpt-connection" id="chatgptConnection"></div><label class="setting-line toggle-line ai-sort-toggle"><span><b>Neue E-Mails automatisch sortieren</b><small>Wenn ChatGPT verbunden ist, werden Betreff, Absender und Nachrichtentext neuer E-Mails zur Kategorisierung an ChatGPT gesendet. Ohne Verbindung sortiert LumenMail lokal.</small></span><input type="checkbox" id="settingAutoSort"><span class="toggle"></span></label><div class="setting-line model-line"><div><b>ChatGPT-Modell</b><small>Automatische Auswahl des verfügbaren Modells.</small></div><select id="settingModel"><option value="">Automatisch</option></select></div><button class="text-button usage-button" type="button" id="usageBtn">ChatGPT-Nutzung ansehen ↗</button><div class="info-note">ChatGPT-Planverbindung ohne API-Schlüssel. Es gelten dein ChatGPT-Tarif und dessen Nutzungslimits. LumenMail benötigt kein separates API-Guthaben.</div></section>
+          <section class="settings-section" data-settings-section="privacy"><h3>Deine Daten</h3><div class="privacy-card"><span class="privacy-icon">⌑</span><div><b>Lokale Speicherung</b><p>E-Mails, Entwürfe und Einstellungen liegen in deinem Windows-Benutzerprofil. Passwörter und ChatGPT-Tokens werden mit dem geschützten Windows-Schlüsselspeicher verschlüsselt.</p></div></div><div class="privacy-card"><span class="privacy-icon">◉</span><div><b>KI und E-Mail-Inhalte</b><p>Ohne ChatGPT-Verbindung bleiben E-Mail-Inhalte auf diesem Gerät. Wenn du ChatGPT verbindest, werden neue Nachrichten nur gemäß der Einstellung „automatisch sortieren“ an ChatGPT gesendet. Bilder aus E-Mails werden nicht automatisch geladen.</p></div></div><div class="privacy-card"><span class="privacy-icon">⌁</span><div><b>ChatGPT-Konto trennen</b><p>Die Trennung löscht gespeicherte ChatGPT-Tokens aus LumenMail. Dein E-Mail-Konto bleibt bestehen.</p><button class="button-quiet danger-text" type="button" id="privacyDisconnectBtn">ChatGPT trennen</button></div></div></section>
+        </div>
+      </div>
+      <div class="modal-footer settings-footer"><span class="footer-spacer"></span><button class="button-quiet" value="cancel">Schließen</button><button class="button-primary" type="button" id="saveSettingsBtn">Einstellungen speichern</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal account-modal" id="accountDialog">
+    <form method="dialog" class="modal-window account-window" id="accountForm">
+      <div class="modal-header"><div><span class="eyebrow">POSTFACH VERBINDEN</span><h2 id="accountDialogTitle">E-Mail-Konto hinzufügen</h2></div><button class="close-button" value="cancel" aria-label="Schließen">×</button></div>
+      <div class="provider-pills"><button type="button" class="provider-pill active" data-provider="gmail">Gmail</button><button type="button" class="provider-pill" data-provider="t-online">T‑Online</button><button type="button" class="provider-pill" data-provider="icloud">iCloud</button><button type="button" class="provider-pill" data-provider="outlook">Outlook</button><button type="button" class="provider-pill" data-provider="custom">Andere</button></div>
+      <div class="form-grid"><label class="input-group span-two"><span>Anzeigename</span><input id="accountName" placeholder="Zum Beispiel Privat" required></label><label class="input-group span-two"><span>E-Mail-Adresse</span><input id="accountEmail" type="email" placeholder="du@beispiel.de" required></label><label class="input-group"><span>IMAP-Server</span><input id="imapHost" placeholder="imap.beispiel.de" required></label><label class="input-group"><span>IMAP-Port</span><input id="imapPort" type="number" value="993" min="1" max="65535"></label><label class="input-group"><span>SMTP-Server</span><input id="smtpHost" placeholder="smtp.beispiel.de" required></label><label class="input-group"><span>SMTP-Port</span><input id="smtpPort" type="number" value="465" min="1" max="65535"></label><label class="input-group"><span>Anmeldung</span><select id="authMode"><option value="password">Passwort / App-Passwort</option><option value="oauth2">OAuth2-Zugriffstoken</option></select></label><label class="input-group"><span>Benutzername</span><input id="accountUsername" placeholder="Meist deine E-Mail-Adresse"></label><label class="input-group span-two" id="accountSecretField"><span id="accountSecretLabel">Passwort oder App-Passwort</span><input id="accountSecret" type="password" autocomplete="new-password" placeholder="Wird verschlüsselt gespeichert"></label><label class="check-field"><input type="checkbox" id="imapSecure" checked><span>IMAP mit TLS</span></label><label class="check-field"><input type="checkbox" id="smtpSecure" checked><span>SMTP mit TLS</span></label></div>
+      <p class="account-help" id="accountHelp">Gmail: IMAP aktivieren und ein Google-App-Passwort verwenden. Das normale Google-Passwort wird hier nicht angenommen. Die Anmeldung erfolgt hier nicht per QR-Code.</p>
+      <div class="account-status" id="accountStatus"></div>
+      <div class="modal-footer"><button class="button-quiet" type="button" id="testAccountBtn">Verbindung prüfen</button><span class="footer-spacer"></span><button class="button-quiet" value="cancel">Abbrechen</button><button class="button-primary" type="button" id="saveAccountBtn">Konto speichern</button></div>
+    </form>
+  </dialog>
+
+  <aside class="chat-drawer" id="chatDrawer" aria-label="ChatGPT-Assistent">
+    <div class="chat-header"><div class="chat-avatar">✧</div><div><b>ChatGPT-Assistent</b><small id="chatConnectionLabel">Postfach und E-Mails verstehen</small></div><button class="close-button" id="chatCloseBtn" aria-label="Schließen">×</button></div>
+    <div class="chat-connect-callout hidden" id="chatConnectCallout"><span>✧</span><div><b>ChatGPT verbinden</b><p>Für den Chat und KI-Aktionen verbindest du dein ChatGPT-Konto einmalig in den Einstellungen.</p><button class="text-button" id="chatSettingsBtn">Zu Einstellungen →</button></div></div>
+    <div class="chat-messages" id="chatMessages"><div class="chat-welcome"><div class="chat-welcome-icon">✧</div><h3>Hallo! Ich helfe dir mit deinen E-Mails.</h3><p>Bitte mich um eine Zusammenfassung, einen Antwortentwurf oder die Sortierung deines Posteingangs.</p><button class="suggestion-chip" data-chat-prompt="Sortiere meine E-Mails">✦ Sortiere meine E-Mails</button><button class="suggestion-chip" data-chat-prompt="Fasse die wichtigsten neuen E-Mails zusammen">▤ Fasse neue E-Mails zusammen</button></div></div>
+    <form class="chat-input-area" id="chatForm"><textarea id="chatInput" rows="1" placeholder="Frage zu deinen E-Mails …"></textarea><button class="chat-send" type="submit" title="Senden">↑</button><small>ChatGPT erhält E-Mail-Inhalte, wenn sie für deine Anfrage benötigt werden.</small></form>
+  </aside>
+
+  <dialog class="modal confirm-modal" id="confirmDialog"><form method="dialog" class="modal-window confirm-window"><div class="modal-header"><div><span class="eyebrow">LUMENMAIL</span><h2 id="confirmTitle">Bestätigen</h2></div><button class="close-button" value="cancel" aria-label="Schließen">×</button></div><p id="confirmText"></p><div class="modal-footer"><span class="footer-spacer"></span><button class="button-quiet" value="cancel">Abbrechen</button><button class="button-primary" id="confirmAccept" value="confirm">Weiter</button></div></form></dialog>
+  <script src="app.js"></script>
+</body>
+</html>
+
