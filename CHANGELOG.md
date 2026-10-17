@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.0.3
+
+- Startet auch dann, wenn der verschlüsselte Zugangsdaten-Speicher beschädigt ist.
+- Sichert unlesbare Zugangsdaten-Dateien und führt durch die erneute Eingabe der Mail-Passwörter.
+
 ## 1.0.2
 
 - Prüft beim Speichern sowohl IMAP-Empfang als auch SMTP-Versand.

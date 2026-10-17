@@ -769,8 +769,13 @@
       bindEvents();
       await loadMessages();
       if (state.accounts.length) $('#welcomeSubtitle').textContent = 'Dein Postfach ist bereit. Synchronisiere, um neue E-Mails abzurufen.';
+      if (bootstrap.secretsRecoveryWarning) {
+        toast(bootstrap.secretsRecoveryWarning, 'error');
+        if (state.accounts.length) setTimeout(() => openAccountDialog(state.accounts[0].id), 500);
+        else setTimeout(() => openSettings('chatgpt'), 500);
+      }
       if (!state.accounts.length) setTimeout(() => openAccountDialog(), 500);
-      if (state.accounts.length && !state.messages.some((item) => item.folder === 'inbox')) setTimeout(() => syncNow(), 300);
+      if (state.accounts.length && !bootstrap.secretsRecoveryWarning && !state.messages.some((item) => item.folder === 'inbox')) setTimeout(() => syncNow(), 300);
     } catch (error) {
       $('#mailList').innerHTML = `<div class="bootstrap-error">LumenMail konnte nicht gestartet werden.<br><small>${escapeHtml(errorMessage(error))}</small></div>`;
       toast(errorMessage(error), 'error');

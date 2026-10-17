@@ -17,6 +17,7 @@ let autoSyncTimer;
 let syncRunning = false;
 let selectedAttachmentPaths = new Set();
 let tokenRefreshPromise = null;
+let secretsRecoveryWarning = '';
 
 function userFiles() {
   const root = app.getPath('userData');
@@ -44,7 +45,22 @@ async function readSecrets() {
   if (!fs.existsSync(filePath)) return { accounts: {}, aiApiKey: '' };
   if (!(await safeStorage.isAsyncEncryptionAvailable())) throw new Error('Der Windows-Schlüsselspeicher ist momentan nicht verfügbar. Zugangsdaten wurden nicht entschlüsselt.');
   const encrypted = fs.readFileSync(filePath);
-  return JSON.parse(await safeStorage.decryptStringAsync(encrypted));
+  const plaintext = await safeStorage.decryptStringAsync(encrypted);
+  let secrets;
+  try { secrets = JSON.parse(plaintext); }
+  catch { return recoverUnreadableSecrets(filePath); }
+  if (!secrets || typeof secrets !== 'object' || Array.isArray(secrets) || (secrets.accounts != null && (typeof secrets.accounts !== 'object' || Array.isArray(secrets.accounts)))) {
+    return recoverUnreadableSecrets(filePath);
+  }
+  return { ...secrets, accounts: secrets.accounts || {} };
+}
+
+function recoverUnreadableSecrets(filePath) {
+  const backupPath = path.join(path.dirname(filePath), `secrets.enc.recovery-${randomUUID()}.bak`);
+  try { fs.renameSync(filePath, backupPath); }
+  catch { throw new Error('Die verschlüsselten Zugangsdaten sind beschädigt und konnten nicht gesichert werden. Bitte schließe LumenMail und prüfe den Windows-Datenordner.'); }
+  secretsRecoveryWarning = 'Die verschlüsselten Zugangsdaten waren nicht lesbar. LumenMail hat die alte Datei sicher im Datenordner gesichert. Bitte gib dein Mail-Passwort oder App-Passwort erneut ein und verbinde ChatGPT bei Bedarf neu.';
+  return { accounts: {}, aiApiKey: '' };
 }
 
 async function writeSecrets(secrets) {
@@ -219,7 +235,7 @@ function registerIpc() {
       try { ({ profile: connectedProfile, models } = await chatgptProfile()); }
       catch { /* The interface can still open and offer a reconnect or local sorting. */ }
     }
-    return { settings: readSettings(), accounts, stats: db.stats(), chatgpt: publicChatGPT(connectedProfile, models), messages: db.listMessages({ folder: 'inbox' }) };
+    return { settings: readSettings(), accounts, stats: db.stats(), chatgpt: publicChatGPT(connectedProfile, models), messages: db.listMessages({ folder: 'inbox' }), secretsRecoveryWarning };
   });
   ipcMain.handle('chatgpt:connect', async () => {
     const settings = readSettings();
