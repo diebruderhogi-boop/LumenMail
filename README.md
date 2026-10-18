@@ -4,9 +4,9 @@ LumenMail ist ein Windows-E-Mail-Client mit IMAP/SMTP, lokalem Postfach, Entwür
 
 ## Installieren
 
-Für die normale Nutzung brauchst du nur die Windows-Setup-Datei aus dem GitHub-Release:
+Für die normale Nutzung brauchst du nur die aktuelle Windows-Setup-Datei aus dem [GitHub-Release-Bereich](https://github.com/diebruderhogi-boop/LumenMail/releases):
 
-1. Doppelklicke auf `LumenMail-Setup-1.0.5.exe`.
+1. Lade die neueste Datei `LumenMail-Setup-<Version>.exe` herunter und doppelklicke darauf.
 2. Wähle bei Bedarf den Installationsordner.
 3. Lass die Verknüpfung im Startmenü oder auf dem Desktop erstellen.
 4. Starte LumenMail und füge dein E-Mail-Konto hinzu.
@@ -20,12 +20,12 @@ LumenMail verbindet sich mit IMAP zum Empfangen und SMTP zum Versenden. Der Einr
 - **Gmail:** IMAP im Google-Konto aktivieren und ein Google-App-Passwort verwenden. Das normale Kontopasswort wird meist nicht angenommen. Leerzeichen im App-Passwort entfernt LumenMail automatisch.
 - **T‑Online:** LumenMail trägt `secureimap.t-online.de:993` und `securesmtp.t-online.de:465` ein. Verwende das Telekom-„Passwort für E‑Mail‑Programme“.
 - **iCloud Mail (`@icloud.com`):** LumenMail trägt `imap.mail.me.com:993` und `smtp.mail.me.com:587` ein. Apple verlangt für die Anmeldung in einer Drittanbieter-App ein App-spezifisches Passwort. Erstelle es in deinem Apple Account unter „Anmelden und Sicherheit → App-spezifische Passwörter“.
-- **Outlook / Microsoft 365:** Server sind vorausgefüllt. Microsoft verlangt bei vielen Konten OAuth2. LumenMail kann einen gültigen OAuth2-Zugriffstoken verwenden; ein Microsoft-Anmeldefenster ist in dieser Version noch nicht integriert.
+- **Outlook / Microsoft 365:** Für persönliche Adressen wie `@outlook.com`, `@hotmail.com`, `@live.com` und `@msn.com` trägt LumenMail `outlook.office365.com:993` und `smtp-mail.outlook.com:587` ein. Geschäftskonten verwenden standardmäßig `smtp.office365.com:587`. Für die direkte Microsoft-Anmeldung zeigt LumenMail einen QR-Code und einen Bestätigungscode; IMAP muss im Outlook.com-Konto eingeschaltet sein.
 - **Andere Anbieter:** IMAP-/SMTP-Adressen, Ports und Anmeldeart beim E-Mail-Anbieter nachsehen.
 
-Diese E-Mail-Anbieter nutzen in LumenMail keinen QR-Geräte-Login. Der QR-/Gerätecode ist nicht für alle Mailanbieter als Desktop-Anmeldung verfügbar. LumenMail öffnet die Anbieter-Voreinstellungen direkt; Passwörter für E-Mail-Programme werden lokal verschlüsselt gespeichert.
+**Direktanmeldung für Gmail und Outlook:** LumenMail kann Google im Browser und Microsoft mit QR-Code und Bestätigungscode anbinden. Für einen Installer müssen die öffentlichen App-IDs von Google und Microsoft in den Konstanten `publicClientIds` in `src/main/mail-oauth-config.js` eingetragen sein. Ohne eine App-ID bleibt der jeweilige Anmeldeknopf deaktiviert. Bei Gmail öffnet sich die Google-Anmeldung im Browser; eine Sicherheitsabfrage kann am Handy bestätigt werden. Google bietet für den Gmail-Mailzugriff keinen normalen QR-Gerätecode. Microsoft stellt für Outlook einen Gerätecode bereit, den du nach dem Scannen auf der Microsoft-Seite eingibst. Gmail verlangt für die öffentliche Verteilung mit dem vollen Mailzugriff eine OAuth-Prüfung; im Testmodus laufen Google-Refresh-Tokens nach sieben Tagen ab. T‑Online und iCloud verwenden weiterhin App-Passwörter.
 
-Die Zugangsdaten werden mit dem Windows-Schlüsselspeicher verschlüsselt. Verbindungsfehler zeigen Hinweise für Server, Port, TLS und Anmeldung. Beim Speichern prüft LumenMail sowohl den IMAP-Empfang als auch den SMTP-Versand, bevor das Konto übernommen wird. Die Anmeldung bei Gmail, T‑Online und iCloud erfolgt in dieser Version mit dem jeweiligen Passwort/App-Passwort; eine QR-Kopplung ist nicht enthalten.
+Die Zugangsdaten und OAuth-Tokens werden mit dem Windows-Schlüsselspeicher verschlüsselt. Verbindungsfehler zeigen Hinweise für Server, Port, TLS und Anmeldung. Beim Speichern prüft LumenMail sowohl den IMAP-Empfang als auch den SMTP-Versand, bevor das Konto übernommen wird.
 
 ## ChatGPT und intelligente Sortierung
 

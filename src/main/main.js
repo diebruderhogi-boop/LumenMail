@@ -2,10 +2,13 @@ const { app, BrowserWindow, ipcMain, dialog, Notification, safeStorage, shell } 
 const path = require('node:path');
 const fs = require('node:fs');
 const { randomUUID } = require('node:crypto');
+const QRCode = require('qrcode');
 const db = require('./db');
 const mail = require('./mail-service');
 const ai = require('./ai-service');
 const chatgptAuth = require('./chatgpt-auth');
+const mailOAuth = require('./mail-oauth');
+const mailOAuthConfig = require('./mail-oauth-config');
 
 const DEFAULTS = {
   theme: 'light', language: 'de', fontScale: 1, syncIntervalMinutes: 5,
@@ -18,6 +21,7 @@ let syncRunning = false;
 let selectedAttachmentPaths = new Set();
 let tokenRefreshPromise = null;
 let secretsRecoveryWarning = '';
+const pendingMailAuthSessions = new Map();
 
 function userFiles() {
   const root = app.getPath('userData');
@@ -136,7 +140,60 @@ function accountById(accountId) {
 async function accountAndSecret(accountId) {
   const account = accountById(accountId);
   const secrets = await readSecrets();
-  return { account, secret: secrets.accounts?.[accountId] || {} };
+  const secret = await refreshAccountSecret(accountId, secrets.accounts?.[accountId] || {});
+  return { account, secret };
+}
+
+async function refreshAccountSecret(accountId, secret) {
+  if (secret?.authMode !== 'oauth2' || !secret.refreshToken || !secret.provider || Number(secret.expiresAt || 0) > Date.now() + 90_000) return secret;
+  const updated = await mailOAuth.refreshTokens(secret);
+  if (publicAccounts(readSettings()).some((account) => account.id === accountId)) {
+    const latest = await readSecrets();
+    latest.accounts = { ...(latest.accounts || {}), [accountId]: { ...(latest.accounts?.[accountId] || {}), ...updated } };
+    await writeSecrets(latest);
+  }
+  return updated;
+}
+
+function oauthClientId(provider) {
+  return provider === 'gmail' ? mailOAuthConfig.googleClientId : provider === 'outlook' ? mailOAuthConfig.microsoftClientId : '';
+}
+
+function expireMailAuthSession(sessionId, delay = 15 * 60_000) {
+  const timer = setTimeout(() => {
+    const session = pendingMailAuthSessions.get(sessionId);
+    if (session?.state === 'waiting') session.cancel?.();
+    pendingMailAuthSessions.delete(sessionId);
+  }, delay);
+  timer.unref?.();
+}
+
+function trackMailAuthSession(sessionId, provider, expectedEmail, flow) {
+  const session = { provider, expectedEmail: String(expectedEmail || '').trim().toLowerCase(), state: 'waiting', secret: null, error: '', cancel: flow.cancel };
+  session.promise = flow.completion.then((secret) => {
+    if (provider === 'gmail' && (!secret.emailVerified || secret.email !== session.expectedEmail)) {
+      throw new Error(`Google hat „${secret.email || 'unbekannt'}“ angemeldet. Bitte gib diese Adresse ein oder melde dich mit ${session.expectedEmail} an.`);
+    }
+    session.secret = { ...secret, authMode: 'oauth2' };
+    session.state = 'ready';
+    return true;
+  }).catch((error) => {
+    session.error = error.message || 'Die Anmeldung ist fehlgeschlagen.';
+    session.state = 'failed';
+    throw error;
+  });
+  session.promise.catch(() => {});
+  pendingMailAuthSessions.set(sessionId, session);
+  expireMailAuthSession(sessionId);
+  return session;
+}
+
+function readyMailAuthSession(sessionId) {
+  const session = pendingMailAuthSessions.get(String(sessionId || ''));
+  if (!session) throw new Error('Die Handy-Anmeldung ist abgelaufen. Bitte starte sie erneut.');
+  if (session.state === 'waiting') throw new Error('Bitte bestätige zuerst die Anmeldung im Browser oder auf dem Handy.');
+  if (session.state === 'failed') throw new Error(session.error);
+  return session;
 }
 
 function createWindow() {
@@ -175,7 +232,8 @@ function cleanAccount(input, current = {}) {
     smtpPort: Number(input.smtpPort) || 465,
     smtpSecure: input.smtpSecure !== false,
     authMode: input.authMode === 'oauth2' ? 'oauth2' : 'password',
-    username: String(input.username || input.email || '').trim().slice(0, 320)
+    username: String(input.username || input.email || '').trim().slice(0, 320),
+    provider: ['gmail', 'outlook', 't-online', 'icloud', 'custom'].includes(input.provider) ? input.provider : (current.provider || 'custom')
   };
   if (!account.name || !/^\S+@\S+\.\S+$/.test(account.email)) throw new Error('Bitte gib einen Kontonamen und eine gültige E-Mail-Adresse ein.');
   if (!account.imapHost || !account.smtpHost) throw new Error('Bitte gib IMAP- und SMTP-Serveradressen ein.');
@@ -248,7 +306,11 @@ function registerIpc() {
       try { ({ profile: connectedProfile, models } = await chatgptProfile()); }
       catch { /* The interface can still open and offer a reconnect or local sorting. */ }
     }
-    return { settings: readSettings(), accounts, stats: db.stats(), chatgpt: publicChatGPT(connectedProfile, models), messages: db.listMessages({ folder: 'inbox' }), secretsRecoveryWarning };
+    return {
+      settings: readSettings(), accounts, stats: db.stats(), chatgpt: publicChatGPT(connectedProfile, models),
+      mailOAuthAvailable: { gmail: Boolean(mailOAuthConfig.googleClientId), outlook: Boolean(mailOAuthConfig.microsoftClientId) },
+      messages: db.listMessages({ folder: 'inbox' }), secretsRecoveryWarning
+    };
   });
   ipcMain.handle('chatgpt:connect', async () => {
     const settings = readSettings();
@@ -351,19 +413,68 @@ function registerIpc() {
     mail.saveAttachment(attachment, result.filePath);
     return { ok: true, filePath: result.filePath };
   });
+  ipcMain.handle('account:oauth:start', async (_event, { provider, email } = {}) => {
+    const clientId = oauthClientId(provider);
+    if (provider === 'gmail') {
+      const flow = await mailOAuth.beginGoogleSignIn({ clientId, email });
+      const sessionId = randomUUID();
+      trackMailAuthSession(sessionId, provider, email, flow);
+      return { sessionId, method: 'browser' };
+    }
+    if (provider === 'outlook') {
+      const device = await mailOAuth.requestMicrosoftDeviceCode({ clientId });
+      const controller = new AbortController();
+      const sessionId = randomUUID();
+      const flow = {
+        completion: mailOAuth.waitForMicrosoftDeviceCode({ ...device, clientId, signal: controller.signal }),
+        cancel: () => controller.abort()
+      };
+      trackMailAuthSession(sessionId, provider, email, flow);
+      const qrDataUrl = await QRCode.toDataURL(device.verificationUri, { errorCorrectionLevel: 'M', margin: 1, width: 240 });
+      return {
+        sessionId, method: 'device-code', qrDataUrl,
+        verificationUri: device.verificationUri, userCode: device.userCode,
+        expiresIn: device.expiresIn
+      };
+    }
+    throw new Error('Die Handy-Anmeldung ist nur für Gmail und Outlook verfügbar. T‑Online und iCloud verwenden ein App-Passwort.');
+  });
+  ipcMain.handle('account:oauth:wait', async (_event, { sessionId } = {}) => {
+    const session = pendingMailAuthSessions.get(String(sessionId || ''));
+    if (!session) throw new Error('Die Handy-Anmeldung ist abgelaufen. Bitte starte sie erneut.');
+    try {
+      await session.promise;
+      return { authorized: true };
+    } catch (error) {
+      throw new Error(error.message || 'Die Anbieter-Anmeldung ist fehlgeschlagen.');
+    }
+  });
+  ipcMain.handle('account:oauth:cancel', (_event, { sessionId } = {}) => {
+    const key = String(sessionId || '');
+    const session = pendingMailAuthSessions.get(key);
+    if (session?.state === 'waiting') session.cancel?.();
+    pendingMailAuthSessions.delete(key);
+    return { canceled: true };
+  });
   ipcMain.handle('account:test', async (_event, input) => {
     const account = cleanAccount(input.account || input);
     const stored = await readSecrets();
     const old = stored.accounts?.[account.id] || {};
-    const submitted = input.secret || {};
+    const session = input.authSessionId ? readyMailAuthSession(input.authSessionId) : null;
+    const submitted = session?.secret || input.secret || {};
     const secret = {
       password: submitted.password || old.password || '',
       accessToken: submitted.accessToken || old.accessToken || '',
-      username: account.username,
-      authMode: account.authMode
+      refreshToken: submitted.refreshToken || old.refreshToken || '',
+      expiresAt: submitted.expiresAt || old.expiresAt || 0,
+      provider: submitted.provider || old.provider || account.provider,
+      clientId: submitted.clientId || old.clientId || oauthClientId(account.provider),
+      email: submitted.email || old.email || '',
+      emailVerified: submitted.emailVerified ?? old.emailVerified ?? false,
+      username: account.username, authMode: account.authMode
     };
     try {
-      return await mail.testConnection(account, secret);
+      return await mail.testConnection(account, await refreshAccountSecret(account.id, secret));
     } catch (error) {
       throw new Error(safeError(error));
     }
@@ -376,18 +487,26 @@ function registerIpc() {
     const account = cleanAccount(raw, current);
     const secrets = await readSecrets();
     const old = secrets.accounts?.[account.id] || {};
-    const submitted = input.secret || {};
+    const session = input.authSessionId ? readyMailAuthSession(input.authSessionId) : null;
+    const submitted = session?.secret || input.secret || {};
     const secret = {
       authMode: account.authMode,
       username: account.username,
-      password: submitted.password || old.password || '',
-      accessToken: submitted.accessToken || old.accessToken || ''
+      password: session ? '' : (submitted.password || old.password || ''),
+      accessToken: submitted.accessToken || old.accessToken || '',
+      refreshToken: submitted.refreshToken || old.refreshToken || '',
+      expiresAt: submitted.expiresAt || old.expiresAt || 0,
+      provider: submitted.provider || old.provider || account.provider,
+      clientId: submitted.clientId || old.clientId || oauthClientId(account.provider),
+      email: submitted.email || old.email || '',
+      emailVerified: submitted.emailVerified ?? old.emailVerified ?? false
     };
     if (secret.authMode === 'password' && !secret.password) throw new Error('Bitte trage das Passwort oder App-Passwort dieses Kontos ein.');
     if (secret.authMode === 'oauth2' && !secret.accessToken) throw new Error('Bitte trage den OAuth2-Zugriffstoken dieses Kontos ein.');
     const updated = current ? accounts.map((item) => item.id === account.id ? account : item) : [...accounts, account];
     secrets.accounts = { ...(secrets.accounts || {}), [account.id]: secret };
     await writeSecrets(secrets);
+    if (input.authSessionId) pendingMailAuthSessions.delete(String(input.authSessionId));
     settings.accounts = updated;
     writeJsonAtomic(userFiles().settings, settings);
     db.cacheAccounts(updated);

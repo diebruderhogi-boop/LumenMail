@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('lumen', {
   saveAttachment: invoke('files:save-attachment'),
   testAccount: invoke('account:test'),
   saveAccount: invoke('account:save'),
+  startMailOAuth: invoke('account:oauth:start'),
+  waitMailOAuth: invoke('account:oauth:wait'),
+  cancelMailOAuth: invoke('account:oauth:cancel'),
   deleteAccount: invoke('account:delete'),
   saveSettings: invoke('settings:save'),
   connectChatGPT: invoke('chatgpt:connect'),
@@ -39,4 +42,5 @@ contextBridge.exposeInMainWorld('lumen', {
     return () => ipcRenderer.removeListener('mail:sort-status', listener);
   }
 });
+
 

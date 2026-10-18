@@ -7,7 +7,8 @@
   const state = {
     settings: {}, accounts: [], chatgpt: { connected: false, email: '', models: [] }, messages: [],
     folder: 'inbox', category: '', query: '', sort: 'date', accountId: '', selectedId: '', selectedIds: new Set(),
-    compose: null, attachments: [], chatHistory: [], currentProvider: 'gmail', editingAccountId: '', syncBusy: false
+    compose: null, attachments: [], chatHistory: [], currentProvider: 'gmail', editingAccountId: '', syncBusy: false,
+    mailOAuthAvailable: { gmail: false, outlook: false }, oauthSessionId: ''
   };
 
   const categoryClass = (category) => `cat-${['Arbeit', 'Schule', 'Privat', 'Werbung'].includes(category) ? category : 'Privat'}`;
@@ -40,6 +41,18 @@
     if (ipcError) message = ipcError[1];
     if (message === 'invalid_grant') {
       return 'ChatGPT hat den einmaligen Anmeldecode abgelehnt oder er ist abgelaufen. Bitte verbinde ChatGPT erneut.';
+    }
+    if (/invalid_grant|expired_token/i.test(message)) {
+      return 'Der Anmeldecode ist abgelaufen oder wurde schon verwendet. Bitte starte die Anbieter-Anmeldung erneut.';
+    }
+    if (/invalid_client|AADSTS700016/i.test(message)) {
+      return 'Die App-ID für diese Anmeldung ist ungültig oder beim Anbieter noch nicht richtig eingerichtet.';
+    }
+    if (/invalid_scope|AADSTS650053/i.test(message)) {
+      return 'Der Anbieter hat die Mail-Berechtigung abgelehnt. Die OAuth-App muss für IMAP und SMTP eingerichtet sein.';
+    }
+    if (/access_denied|authorization_declined|user_cancelled/i.test(message)) {
+      return 'Die Anmeldung wurde abgebrochen oder nicht bestätigt.';
     }
     return message;
   }
@@ -399,6 +412,7 @@
 
   function openAccountDialog(accountId = '') {
     state.editingAccountId = accountId;
+    state.oauthSessionId = '';
     const account = state.accounts.find((item) => item.id === accountId);
     $('#accountForm').reset();
     $('#accountDialogTitle').textContent = account ? 'E-Mail-Konto bearbeiten' : 'E-Mail-Konto hinzufügen';
@@ -415,22 +429,34 @@
     $('#smtpSecure').checked = account?.smtpSecure !== false;
     $('#accountSecret').value = '';
     $('#accountSecret').required = !account;
+    $('#accountOAuthPanel').classList.add('hidden');
+    $('#accountOAuthQrWrap').classList.add('hidden');
+    $('#cancelAccountOAuthBtn').classList.add('hidden');
     if (account) {
-      state.currentProvider = account.imapHost.includes('gmail') ? 'gmail' : account.imapHost.includes('outlook') ? 'outlook' : account.imapHost.includes('t-online') ? 't-online' : account.imapHost.includes('mail.me.com') ? 'icloud' : 'custom';
+      state.currentProvider = ['gmail', 'outlook', 't-online', 'icloud', 'custom'].includes(account.provider)
+        ? account.provider
+        : account.imapHost.includes('gmail') ? 'gmail' : account.imapHost.includes('outlook') ? 'outlook' : account.imapHost.includes('t-online') ? 't-online' : account.imapHost.includes('mail.me.com') ? 'icloud' : 'custom';
       updateProviderUI();
-      if (state.currentProvider === 't-online') $('#accountHelp').textContent = 'T‑Online: Verwende das „Passwort für E‑Mail‑Programme“ aus deinem Telekom-Konto. Die Anmeldung erfolgt hier nicht per QR-Code.';
-      else if (state.currentProvider === 'icloud') $('#accountHelp').textContent = 'iCloud Mail: Verwende ein App-spezifisches Passwort von account.apple.com und deine vollständige @icloud.com-Adresse. Die Anmeldung erfolgt hier nicht per QR-Code.';
-      else if (state.currentProvider === 'gmail') $('#accountHelp').textContent = 'Gmail: IMAP aktivieren und ein Google-App-Passwort verwenden. Das normale Google-Passwort wird hier nicht angenommen. Die Anmeldung erfolgt hier nicht per QR-Code.';
+      if (state.currentProvider === 't-online') $('#accountHelp').textContent = 'T‑Online: Verwende das Telekom-„Passwort für E‑Mail‑Programme“. Es ist ein eigenes Passwort für Mail-Apps.';
+      else if (state.currentProvider === 'icloud') $('#accountHelp').textContent = 'iCloud Mail: Verwende ein App-spezifisches Passwort von account.apple.com und deine vollständige @icloud.com-Adresse.';
+      else if (state.currentProvider === 'gmail') $('#accountHelp').textContent = 'Gmail: Du kannst ein Google-App-Passwort verwenden oder dich über Google anmelden. Bei der Browser-Anmeldung kannst du eine Sicherheitsabfrage am Handy bestätigen.';
+      else if (state.currentProvider === 'outlook') $('#accountHelp').textContent = 'Outlook / Microsoft 365: Melde dich mit Microsoft an. Der QR-Code öffnet die Microsoft-Seite; gib dort zusätzlich den angezeigten Code ein.';
     } else {
       state.currentProvider = 'gmail';
       applyProviderPreset('gmail', true);
     }
     delete $('#accountUsername').dataset.touched;
     updateAuthField();
+    updateProviderOAuthUI();
     $('#accountDialog').showModal();
   }
 
   function applyProviderPreset(provider, updateName = true) {
+    if (state.oauthSessionId) {
+      window.lumen.cancelMailOAuth({ sessionId: state.oauthSessionId }).catch(() => {});
+      state.oauthSessionId = '';
+      $('#authMode').value = 'password';
+    }
     const names = { gmail: 'Gmail', outlook: 'Outlook', 't-online': 'T-Online', icloud: 'iCloud', custom: '' };
     const previousName = names[state.currentProvider];
     const oldName = $('#accountName').value.trim();
@@ -438,34 +464,133 @@
     if (provider === 'gmail') {
       $('#imapHost').value = 'imap.gmail.com'; $('#imapPort').value = '993'; $('#imapSecure').checked = true;
       $('#smtpHost').value = 'smtp.gmail.com'; $('#smtpPort').value = '465'; $('#smtpSecure').checked = true;
-      $('#accountHelp').textContent = 'Gmail: IMAP aktivieren und ein Google-App-Passwort verwenden. Das normale Google-Passwort wird hier nicht angenommen. Die Anmeldung erfolgt hier nicht per QR-Code.';
+      $('#accountHelp').textContent = 'Gmail: Du kannst ein Google-App-Passwort verwenden oder dich über Google anmelden. Bei der Browser-Anmeldung kannst du eine Sicherheitsabfrage am Handy bestätigen.';
     } else if (provider === 't-online') {
       $('#imapHost').value = 'secureimap.t-online.de'; $('#imapPort').value = '993'; $('#imapSecure').checked = true;
       $('#smtpHost').value = 'securesmtp.t-online.de'; $('#smtpPort').value = '465'; $('#smtpSecure').checked = true;
-      $('#accountHelp').textContent = 'T‑Online: Verwende das „Passwort für E‑Mail‑Programme“ aus deinem Telekom-Konto. Die Serverdaten sind vorausgefüllt; die Anmeldung erfolgt hier nicht per QR-Code.';
+      $('#accountHelp').textContent = 'T‑Online: Verwende das Telekom-„Passwort für E‑Mail‑Programme“. Die Serverdaten sind vorausgefüllt.';
     } else if (provider === 'icloud') {
       $('#imapHost').value = 'imap.mail.me.com'; $('#imapPort').value = '993'; $('#imapSecure').checked = true;
       $('#smtpHost').value = 'smtp.mail.me.com'; $('#smtpPort').value = '587'; $('#smtpSecure').checked = false;
-      $('#accountHelp').textContent = 'iCloud Mail: Erstelle auf account.apple.com ein App-spezifisches Passwort. Trage deine vollständige @icloud.com-Adresse als Benutzernamen ein. Die Anmeldung erfolgt hier nicht per QR-Code.';
+      $('#accountHelp').textContent = 'iCloud Mail: Erstelle auf account.apple.com ein App-spezifisches Passwort. Trage deine vollständige @icloud.com-Adresse als Benutzernamen ein.';
     } else if (provider === 'outlook') {
       $('#imapHost').value = 'outlook.office365.com'; $('#imapPort').value = '993'; $('#imapSecure').checked = true;
-      $('#smtpHost').value = 'smtp.office365.com'; $('#smtpPort').value = '587'; $('#smtpSecure').checked = false;
-      $('#accountHelp').textContent = 'Outlook / Microsoft 365: moderne Konten erfordern häufig OAuth2. Wähle OAuth2-Zugriffstoken und trage ein gültiges Token deines Anbieters ein; LumenMail bietet dafür noch keinen Microsoft-Anmeldeknopf.';
+      setOutlookSmtpHost($('#accountEmail').value);
+      $('#smtpPort').value = '587'; $('#smtpSecure').checked = false;
+      $('#accountHelp').textContent = 'Outlook / Microsoft 365: Melde dich mit Microsoft an. Der QR-Code öffnet die Microsoft-Seite; gib dort zusätzlich den angezeigten Code ein.';
     } else {
       $('#accountHelp').textContent = 'Trage die IMAP- und SMTP-Serverdaten deines Anbieters ein. Die meisten Anbieter stellen sie in ihrer Hilfe bereit.';
     }
     if (updateName && (!oldName || oldName === previousName)) $('#accountName').value = names[provider];
     updateProviderUI();
+    updateProviderOAuthUI();
+    updateAuthField();
+    $('#accountOAuthPanel').classList.add('hidden');
+    $('#accountOAuthQrWrap').classList.add('hidden');
+  }
+
+  function setOutlookSmtpHost(email) {
+    const domain = String(email || '').trim().toLowerCase().split('@').pop();
+    const personalDomains = new Set(['outlook.com', 'hotmail.com', 'live.com', 'msn.com']);
+    $('#smtpHost').value = personalDomains.has(domain) ? 'smtp-mail.outlook.com' : 'smtp.office365.com';
   }
 
   function updateProviderUI() { $$('.provider-pill').forEach((button) => button.classList.toggle('active', button.dataset.provider === state.currentProvider)); }
 
+  function updateProviderOAuthUI() {
+    const button = $('#providerOAuthBtn');
+    const provider = state.currentProvider;
+    const allowed = provider === 'gmail' || provider === 'outlook';
+    button.classList.toggle('hidden', !allowed);
+    if (!allowed) { $('#providerOAuthStatus').textContent = ''; return; }
+    const available = Boolean(state.mailOAuthAvailable[provider]);
+    button.disabled = !available;
+    button.textContent = provider === 'outlook' ? 'Zum Handy-QR wechseln' : 'Mit Google im Browser anmelden';
+    $('#providerOAuthStatus').textContent = available
+      ? (provider === 'outlook' ? 'QR-Code und Bestätigungscode fürs Handy' : 'Browser-Anmeldung; Handy-Bestätigung möglich')
+      : `Für die direkte ${provider === 'gmail' ? 'Google-' : 'Microsoft-'}Anmeldung fehlt noch die App-ID für LumenMail.`;
+  }
+
+  async function beginProviderOAuth() {
+    const provider = state.currentProvider;
+    if (!['gmail', 'outlook'].includes(provider)) return;
+    const email = $('#accountEmail').value.trim();
+    if (!email) { $('#accountEmail').focus(); toast('Gib zuerst deine E-Mail-Adresse ein.', 'error'); return; }
+    if (state.oauthSessionId) await window.lumen.cancelMailOAuth({ sessionId: state.oauthSessionId }).catch(() => {});
+    state.oauthSessionId = '';
+    const button = $('#providerOAuthBtn');
+    button.disabled = true;
+    $('#accountOAuthPanel').classList.remove('hidden');
+    $('#accountOAuthQrWrap').classList.add('hidden');
+    $('#cancelAccountOAuthBtn').classList.add('hidden');
+    $('#accountOAuthTitle').textContent = provider === 'outlook' ? 'Microsoft-Anmeldung wird vorbereitet' : 'Google-Anmeldung wird vorbereitet';
+    $('#cancelAccountOAuthBtn').textContent = provider === 'outlook' ? 'Zur Passwort-Anmeldung wechseln' : 'Google-Anmeldung abbrechen';
+    $('#accountOAuthMessage').textContent = provider === 'outlook'
+      ? 'LumenMail fordert bei Microsoft einen einmaligen Code an …'
+      : 'Der Browser wird geöffnet. Melde dich bei Google an; eine Sicherheitsabfrage kannst du am Handy bestätigen.';
+    try {
+      const started = await window.lumen.startMailOAuth({ provider, email });
+      state.oauthSessionId = started.sessionId;
+      $('#cancelAccountOAuthBtn').classList.remove('hidden');
+      if (started.method === 'device-code') {
+        $('#accountOAuthTitle').textContent = 'Mit Microsoft am Handy bestätigen';
+        $('#accountOAuthMessage').textContent = `Scanne den QR-Code mit deinem Handy oder öffne ${started.verificationUri}. Gib dort den folgenden Code ein. Der Code läuft nach ungefähr ${Math.max(1, Math.round(started.expiresIn / 60))} Minuten ab.`;
+        $('#accountOAuthQr').src = started.qrDataUrl;
+        $('#accountOAuthQrWrap').classList.remove('hidden');
+        $('#accountOAuthCode').textContent = started.userCode;
+        $('#accountOAuthCodeHelp').textContent = 'Nach dem Scannen diesen Code auf der Microsoft-Seite eingeben:';
+      } else {
+        $('#accountOAuthTitle').textContent = 'Google-Anmeldung im Browser';
+        $('#accountOAuthMessage').textContent = 'Melde dich im geöffneten Browser mit deinem Google-Konto an und erlaube den Mailzugriff. Bei Bedarf bestätigst du die Anmeldung am Handy.';
+      }
+      await window.lumen.waitMailOAuth({ sessionId: started.sessionId });
+      state.oauthSessionId = started.sessionId;
+      $('#authMode').value = 'oauth2';
+      $('#accountSecret').value = '';
+      $('#accountSecret').required = false;
+      updateAuthField();
+      $('#accountOAuthTitle').textContent = 'Anmeldung bestätigt';
+      $('#accountOAuthMessage').textContent = 'Der Anbieter hat LumenMail autorisiert. Prüfe jetzt IMAP und SMTP oder speichere das Konto.';
+      $('#cancelAccountOAuthBtn').classList.add('hidden');
+      toast('Anmeldung vom Anbieter bestätigt. Prüfe jetzt die Verbindung.', 'success');
+    } catch (error) {
+      $('#accountOAuthTitle').textContent = 'Anmeldung nicht abgeschlossen';
+      $('#accountOAuthMessage').textContent = errorMessage(error);
+      if (state.oauthSessionId) await window.lumen.cancelMailOAuth({ sessionId: state.oauthSessionId }).catch(() => {});
+      state.oauthSessionId = '';
+    } finally {
+      button.disabled = !state.mailOAuthAvailable[provider];
+    }
+  }
+
+  async function cancelProviderOAuth() {
+    if (state.oauthSessionId) await window.lumen.cancelMailOAuth({ sessionId: state.oauthSessionId }).catch(() => {});
+    state.oauthSessionId = '';
+    $('#accountOAuthPanel').classList.add('hidden');
+    $('#accountOAuthQrWrap').classList.add('hidden');
+    $('#cancelAccountOAuthBtn').classList.add('hidden');
+    $('#authMode').value = 'password';
+    updateAuthField();
+    updateProviderOAuthUI();
+  }
+
+  async function handleAuthModeChange() {
+    if ($('#authMode').value !== 'oauth2' && state.oauthSessionId) {
+      await window.lumen.cancelMailOAuth({ sessionId: state.oauthSessionId }).catch(() => {});
+      state.oauthSessionId = '';
+      $('#accountOAuthPanel').classList.add('hidden');
+      $('#cancelAccountOAuthBtn').classList.add('hidden');
+    }
+    updateAuthField();
+  }
+
   function updateAuthField() {
     const oauth = $('#authMode').value === 'oauth2';
+    $('#accountSecretField').classList.toggle('hidden', Boolean(oauth && state.oauthSessionId));
     $('#accountSecretLabel').textContent = oauth ? 'OAuth2-Zugriffstoken' : 'Passwort oder App-Passwort';
     $('#accountSecret').placeholder = oauth ? 'Zugriffstoken einfügen' : 'Wird verschlüsselt gespeichert';
     $('#accountSecret').autocomplete = 'new-password';
-    $('#accountSecret').required = !state.editingAccountId;
+    $('#accountSecret').required = !state.editingAccountId && !state.oauthSessionId;
   }
 
   function accountFormValue() {
@@ -475,7 +600,7 @@
       username: $('#accountUsername').value.trim(),
       imapHost: $('#imapHost').value.trim(), imapPort: Number($('#imapPort').value), imapSecure: $('#imapSecure').checked,
       smtpHost: $('#smtpHost').value.trim(), smtpPort: Number($('#smtpPort').value), smtpSecure: $('#smtpSecure').checked,
-      authMode: $('#authMode').value
+      authMode: $('#authMode').value, provider: state.currentProvider
     };
   }
 
@@ -489,7 +614,7 @@
     const button = $('#testAccountBtn'); button.disabled = true;
     $('#accountStatus').textContent = 'IMAP- und SMTP-Verbindung werden geprüft …';
     try {
-      const result = await window.lumen.testAccount({ account: accountFormValue(), secret: accountSecretValue() });
+      const result = await window.lumen.testAccount({ account: accountFormValue(), secret: accountSecretValue(), authSessionId: state.oauthSessionId || undefined });
       $('#accountStatus').textContent = `IMAP (${result.imapServer}) und SMTP (${result.smtpServer}) funktionieren.`;
       toast('Empfang und Versand funktionieren.', 'success');
     } catch (error) { $('#accountStatus').textContent = errorMessage(error); toast(errorMessage(error), 'error'); }
@@ -500,9 +625,10 @@
     const button = $('#saveAccountBtn'); button.disabled = true;
     $('#accountStatus').textContent = 'IMAP und SMTP werden geprüft …';
     try {
-      const connection = await window.lumen.testAccount({ account: accountFormValue(), secret: accountSecretValue() });
+      const connection = await window.lumen.testAccount({ account: accountFormValue(), secret: accountSecretValue(), authSessionId: state.oauthSessionId || undefined });
       $('#accountStatus').textContent = 'Verbindung erfolgreich. Konto wird sicher gespeichert …';
-      const result = await window.lumen.saveAccount({ account: accountFormValue(), secret: accountSecretValue() });
+      const result = await window.lumen.saveAccount({ account: accountFormValue(), secret: accountSecretValue(), authSessionId: state.oauthSessionId || undefined });
+      state.oauthSessionId = '';
       state.accounts = result.accounts;
       $('#accountDialog').close();
       updateAccountSelects();
@@ -728,8 +854,17 @@
     });
     $('#provider-pills')?.addEventListener('click', () => {});
     $$('.provider-pill').forEach((button) => button.addEventListener('click', () => applyProviderPreset(button.dataset.provider)));
-    $('#authMode').addEventListener('change', updateAuthField);
-    $('#accountEmail').addEventListener('input', () => { if (!$('#accountUsername').dataset.touched) $('#accountUsername').value = $('#accountEmail').value; });
+    $('#providerOAuthBtn').addEventListener('click', beginProviderOAuth);
+    $('#cancelAccountOAuthBtn').addEventListener('click', cancelProviderOAuth);
+    $('#accountDialog').addEventListener('close', () => {
+      if (state.oauthSessionId) window.lumen.cancelMailOAuth({ sessionId: state.oauthSessionId }).catch(() => {});
+      state.oauthSessionId = '';
+    });
+    $('#authMode').addEventListener('change', handleAuthModeChange);
+    $('#accountEmail').addEventListener('input', () => {
+      if (!$('#accountUsername').dataset.touched) $('#accountUsername').value = $('#accountEmail').value;
+      if (state.currentProvider === 'outlook') setOutlookSmtpHost($('#accountEmail').value);
+    });
     $('#accountUsername').addEventListener('input', () => { $('#accountUsername').dataset.touched = 'true'; });
     $('#testAccountBtn').addEventListener('click', testAccount);
     $('#saveAccountBtn').addEventListener('click', saveAccount);
@@ -772,6 +907,7 @@
       state.settings = bootstrap.settings || {};
       state.accounts = bootstrap.accounts || [];
       state.chatgpt = bootstrap.chatgpt || { connected: false, email: '', models: [] };
+      state.mailOAuthAvailable = bootstrap.mailOAuthAvailable || { gmail: false, outlook: false };
       applyAppearance();
       updateAccountSelects();
       bindEvents();
@@ -792,3 +928,4 @@
 
   init();
 })();
+

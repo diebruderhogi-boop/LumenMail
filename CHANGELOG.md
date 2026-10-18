@@ -1,5 +1,13 @@
 # Änderungen
 
+## 1.0.6 (Quellcode vorbereitet; Installer noch nicht veröffentlicht)
+
+- Bereitet die Google-Browser-Anmeldung und den Microsoft-Gerätecode-QR für E-Mail-Konten vor.
+- Erneuert Gmail- und Outlook-Zugriffstokens automatisch und speichert sie verschlüsselt im Windows-Schlüsselspeicher.
+- Verwendet für persönliche Outlook.com-Adressen den passenden SMTP-Server.
+- Ergänzt eine gut erkennbare Schaltfläche zum Outlook-Handy-QR und eine Rückkehr zur Passwort-Anmeldung.
+- Die Anbieter-Anmeldung bleibt deaktiviert, bis die öffentlichen Google- und Microsoft-App-IDs eingetragen sind.
+
 ## 1.0.5
 
 - Zeigt beim Prüfen neuer Mailkonten verständliche IMAP- und SMTP-Fehler samt Serverhinweis statt nur „Command failed“.

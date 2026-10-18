@@ -1,6 +1,6 @@
 {
   "name": "lumenmail",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Ein moderner, lokaler E-Mail-Client für Windows",
   "main": "src/main/main.js",
   "author": "LumenMail",
@@ -14,6 +14,7 @@
     "imapflow": "^2.5.2",
     "mailparser": "^3.9.40",
     "nodemailer": "^10.1.2",
+    "qrcode": "^1.5.4",
     "sql.js": "^1.15.0"
   },
   "devDependencies": {
